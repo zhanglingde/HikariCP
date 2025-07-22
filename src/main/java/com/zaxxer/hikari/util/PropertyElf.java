@@ -44,14 +44,16 @@ public final class PropertyElf
       if (target == null || properties == null) {
          return;
       }
-
+      // 获取HikariConfig的所有方法
       var methods = Arrays.asList(target.getClass().getMethods());
       properties.forEach((key, value) -> {
          var keyName = key.toString();
+         // 如果是 dataSource.* 的参数，直接加入到dataSourceProperties属性
          if (target instanceof HikariConfig && keyName.startsWith("dataSource.")) {
             ((HikariConfig) target).addDataSourceProperty(keyName.substring("dataSource.".length()), value);
          }
          else {
+            // 找到参数对应的 setter 方法并赋值
             setProperty(target, keyName, value, methods);
          }
       });

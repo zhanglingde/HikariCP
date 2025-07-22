@@ -21,6 +21,8 @@ import java.sql.SQLTransientException;
 import java.util.concurrent.Semaphore;
 
 /**
+ * 可挂起和恢复线程池的锁实现
+ *
  * This class implements a lock that can be used to suspend and resume the pool.  It
  * also provides a faux implementation that is used when the feature is disabled that
  * hopefully gets fully "optimized away" by the JIT.
@@ -29,6 +31,9 @@ import java.util.concurrent.Semaphore;
  */
 public class SuspendResumeLock
 {
+   /**
+    * 空实现（faux）: 当该功能关闭时，使用一个“假实现”以期被JIT完全优化掉，减少运行时开销
+    */
    public static final SuspendResumeLock FAUX_LOCK = new SuspendResumeLock(false) {
       @Override
       public void acquire() {}

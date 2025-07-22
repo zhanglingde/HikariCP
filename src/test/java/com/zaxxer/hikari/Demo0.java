@@ -13,17 +13,18 @@ public class Demo0 {
 
    @Test
    public void test02() throws SQLException {
-      HikariConfig config = new HikariConfig();
-      config.setJdbcUrl("jdbc:mysql://localhost:3306/test");
-      config.setUsername("root");
-      config.setPassword("root");
-      config.setDriverClassName("com.mysql.jdbc.Driver");
-      config.setMaximumPoolSize(10);
-      config.setMinimumIdle(5);
-      config.setConnectionTimeout(5000);
-      config.setIdleTimeout(600000);
-      config.setMaxLifetime(1800000);
-
+      // HikariConfig config = new HikariConfig();
+      // config.setJdbcUrl("jdbc:mysql://localhost:3306/test");
+      // config.setUsername("root");
+      // config.setPassword("root");
+      // config.setDriverClassName("com.mysql.jdbc.Driver");
+      // config.setMaximumPoolSize(10);
+      // config.setMinimumIdle(2);    // 最小空闲连接数
+      // config.setConnectionTimeout(5000);
+      // config.setIdleTimeout(600000);
+      // config.setMaxLifetime(1800000);
+      // HikariDataSource dataSource = new HikariDataSource(config);
+      HikariConfig config = new HikariConfig("/hikari2.properties");
       HikariDataSource dataSource = new HikariDataSource(config);
       List<Connection> list = new ArrayList<>();
       for (int i = 0; i < 3; i++) {

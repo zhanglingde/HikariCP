@@ -60,14 +60,35 @@ public class ConcurrentBag<T extends IConcurrentBagEntry> implements AutoCloseab
 {
    private static final Logger LOGGER = LoggerFactory.getLogger(ConcurrentBag.class);
 
+   /**
+    * 存储所有可被借用的对象（例如数据库连接）线程安全，写操作时复制整个数组
+    */
    private final CopyOnWriteArrayList<T> sharedList;
+   /**
+    * true：表示使用弱引用，弱引用对象被垃圾回收器回收后，对象本身和弱引用对象都会被回收，避免内存泄露
+    */
    private final boolean useWeakThreadLocals;
 
+   /**
+    * 为每个线程维护一个本地对象列表，用于快速获取和归还对象
+    * 避免频繁访问共享的 sharedList，减少锁竞争;若使用了弱引用，则使用 WeakReference 包裹对象；否则使用强引用。
+    */
    private final ThreadLocal<List<Object>> threadLocalList;
+   /**
+    * 监听 ConcurrentBag 的状态变化，比如当没有可用对象时通知生产者添加新对象(当连接不足时，触发创建新的数据库连接)
+    */
    private final IBagStateListener listener;
+   /**
+    * 记录当前等待获取对象的线程数量(控制并发等待逻辑; 用于协调线程间的协作，如唤醒或阻塞等待线程)
+    */
    private final AtomicInteger waiters;
+   /**
+    * 标识该 ConcurrentBag 是否已经被关闭( volatile 确保多线程可见性)
+    */
    private volatile boolean closed;
-
+   /**
+    * 这是一个无容量的阻塞队列，出队和入队都可以选择是否阻塞
+    */
    private final SynchronousQueue<T> handoffQueue;
 
    public interface IConcurrentBagEntry
@@ -106,6 +127,8 @@ public class ConcurrentBag<T extends IConcurrentBagEntry> implements AutoCloseab
    }
 
    /**
+    * 借取连接
+    *
     * The method will borrow a BagEntry from the bag, blocking for the
     * specified timeout if none are available.
     *
@@ -117,6 +140,7 @@ public class ConcurrentBag<T extends IConcurrentBagEntry> implements AutoCloseab
    public T borrow(long timeout, final TimeUnit timeUnit) throws InterruptedException
    {
       // Try the thread-local list first
+      // 1. 先从 threadLocalList 获取资源
       final var list = threadLocalList.get();
       for (var i = list.size() - 1; i >= 0; i--) {
          final var entry = list.remove(i);
@@ -128,23 +152,31 @@ public class ConcurrentBag<T extends IConcurrentBagEntry> implements AutoCloseab
       }
 
       // Otherwise, scan the shared list ... then poll the handoff queue
+      // 等待获取连接的线程数+1
       final var waiting = waiters.incrementAndGet();
       try {
+         // 2.如果还没获取到，会从sharedList中获取对象
          for (T bagEntry : sharedList) {
             if (bagEntry.compareAndSet(STATE_NOT_IN_USE, STATE_IN_USE)) {
                // If we may have stolen another waiter's connection, request another bag add.
+               // 如果同时有其他线程在获取连接，该线程把连接获取了，则通知创建新的连接
                if (waiting > 1) {
                   listener.addBagItem(waiting - 1);
                }
                return bagEntry;
             }
          }
-
+         // 从sharedList 中获取不到资源，通知监听器创建资源（不一定会创建）
          listener.addBagItem(waiting);
 
+         // 3.如果还没获取到，会堵塞等待空闲连接
          timeout = timeUnit.toNanos(timeout);
          do {
             final var start = currentTime();
+            // 这里会出现三种情况，
+            // 1.超时，返回null
+            // 2.获取到资源，但状态为正在使用，继续循环
+            // 3.获取到资源，元素状态为未使用，修改为已使用并返回
             final T bagEntry = handoffQueue.poll(timeout, NANOSECONDS);
             if (bagEntry == null || bagEntry.compareAndSet(STATE_NOT_IN_USE, STATE_IN_USE)) {
                return bagEntry;
@@ -152,15 +184,18 @@ public class ConcurrentBag<T extends IConcurrentBagEntry> implements AutoCloseab
 
             timeout -= elapsedNanos(start);
          } while (timeout > 10_000);
-
+         // 4.超时了还是没有获取到，返回null
          return null;
       }
       finally {
+         // 等待获取连接的线程数 -1
          waiters.decrementAndGet();
       }
    }
 
    /**
+    * 归还连接，若借出的连接未被归还，会导致内存泄露
+    *
     * This method will return a borrowed object to the bag.  Objects
     * that are borrowed from the bag but never "requited" will result
     * in a memory leak.
