@@ -11,6 +11,19 @@ import java.util.List;
 
 public class Demo0 {
 
+   /**
+    * 测试 JMX 动态修改属性
+    *
+    * @throws InterruptedException
+    */
+   public static void main(String[] args) throws InterruptedException {
+      HikariConfig config = new HikariConfig("/hikari2.properties");
+      HikariDataSource dataSource = new HikariDataSource(config);
+      Thread.sleep(3 * 60 * 1000);
+      System.out.println(dataSource.getMaximumPoolSize());
+      dataSource.close();
+   }
+
    @Test
    public void test02() throws SQLException {
       // HikariConfig config = new HikariConfig();
